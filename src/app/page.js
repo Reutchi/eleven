@@ -1,95 +1,90 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import React, { useRef, useState } from 'react';
 
 export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>src/app/page.js</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [status, setStatus] = useState('Idle');
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
-        </div>
+  const handleVoice = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Web Speech API not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setStatus('Stopped');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US'; // sau 'ro-RO' pentru română
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setStatus('Listening...');
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setStatus('Idle');
+    };
+
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript;
+      setStatus(`You said: "${transcript}"`);
+
+      // Trimite la chatbot
+      const res = await fetch('/api/chatbot', {
+        method: 'POST',
+        body: JSON.stringify({ message: transcript }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+
+      // Trimite la ElevenLabs
+      setStatus('Generating voice...');
+      const audioRes = await fetch('/api/elevenlabs', {
+        method: 'POST',
+        body: JSON.stringify({ text: data.reply }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const audioBlob = await audioRes.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  return (
+      <main style={{ padding: '2rem', fontFamily: 'Arial, sans-serif' }}>
+        <h1>🎤 Voice Chatbot</h1>
+        <button
+            onClick={handleVoice}
+            style={{
+              padding: '1rem 2rem',
+              fontSize: '1.2rem',
+              backgroundColor: isListening ? 'red' : 'green',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+            }}
+        >
+          {isListening ? 'Stop' : 'Start Voice'}
+        </button>
+        <p style={{ marginTop: '1rem', fontWeight: 'bold' }}>Status: {status}</p>
       </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
   );
 }
