@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 
 export default function Home() {
-    const [status, setStatus] = useState('Idle');
+    const [status, setStatus] = useState('');
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const recognitionRef = useRef(null);
@@ -24,7 +24,7 @@ export default function Home() {
         }
 
         const recognition = new SpeechRecognition();
-        recognition.lang = 'en-US'; // sau 'ro-RO' pentru română
+        recognition.lang = 'ro-RO'; // sau 'ro-RO' pentru română
         recognition.interimResults = true; // Permite să obținem rezultate intermediare (pe măsură ce vorbești)
         recognition.continuous = false;
 
