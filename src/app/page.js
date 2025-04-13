@@ -1,12 +1,27 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 export default function Home() {
     const [status, setStatus] = useState('');
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
+    const [replyText, setReplyText] = useState('');
+    const [conversationHistory, setConversationHistory] = useState([]);
     const recognitionRef = useRef(null);
+
+    // Load conversation from localStorage on mount
+    useEffect(() => {
+        const storedHistory = localStorage.getItem('conversationHistory');
+        if (storedHistory) {
+            setConversationHistory(JSON.parse(storedHistory));
+        }
+    }, []);
+
+    // Save conversation to localStorage when it changes
+    useEffect(() => {
+        localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
+    }, [conversationHistory]);
 
     const handleVoice = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -24,8 +39,8 @@ export default function Home() {
         }
 
         const recognition = new SpeechRecognition();
-        recognition.lang = 'ro-RO'; // sau 'ro-RO' pentru română
-        recognition.interimResults = true; // Permite să obținem rezultate intermediare (pe măsură ce vorbești)
+        recognition.lang = 'ro-RO';
+        recognition.interimResults = true;
         recognition.continuous = false;
 
         recognition.onstart = () => {
@@ -36,6 +51,9 @@ export default function Home() {
         recognition.onend = () => {
             setIsListening(false);
             setStatus('Idle');
+
+            // After speech recognition ends, automatically submit the message
+            handleSubmit();
         };
 
         recognition.onresult = (event) => {
@@ -43,13 +61,10 @@ export default function Home() {
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const result = event.results[i];
                 interimTranscript += result[0].transcript;
-
-                // Dacă există un rezultat final, actualizează transcrierea completă
                 if (result.isFinal) {
                     setTranscript(interimTranscript);
                 }
             }
-            // Actualizează transcrierea intermediară pe măsură ce utilizatorul vorbește
             setTranscript(interimTranscript);
         };
 
@@ -60,32 +75,50 @@ export default function Home() {
     const handleSubmit = async () => {
         if (transcript.trim() === '') return;
 
-        // Trimitem transcriptul către API-ul chatbot
-        const res = await fetch('/api/chatbot', {
-            method: 'POST',
-            body: JSON.stringify({ message: transcript }),
-            headers: { 'Content-Type': 'application/json' },
-        });
+        try {
+            setStatus('Sending to GPT...');
+            const res = await fetch('/api/chatbot', {
+                method: 'POST',
+                body: JSON.stringify({ message: transcript }),
+                headers: { 'Content-Type': 'application/json' },
+            });
 
-        const data = await res.json();
+            const data = await res.json();
 
-        // Trimitem răspunsul chatbotului pentru a genera audio cu ElevenLabs
-        setStatus('Generating voice...');
-        const audioRes = await fetch('/api/elevenlabs', {
-            method: 'POST',
-            body: JSON.stringify({ text: data.reply }),
-            headers: { 'Content-Type': 'application/json' },
-        });
+            if (data.reply) {
+                setReplyText(data.reply);
 
-        const audioBlob = await audioRes.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audio.play();
+                // Add to conversation history
+                setConversationHistory(prev => [
+                    ...prev,
+                    { question: transcript, answer: data.reply }
+                ]);
+            }
+
+            setStatus('Generating voice...');
+
+            const audioRes = await fetch('/api/elevenlabs', {
+                method: 'POST',
+                body: JSON.stringify({ text: data.reply }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const audioBlob = await audioRes.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            audio.play();
+
+            setStatus('Done!');
+        } catch (err) {
+            setStatus('Error occurred');
+            console.error(err);
+        }
     };
 
     return (
         <main style={{ padding: '2rem', fontFamily: 'Arial, sans-serif' }}>
             <h1>🎤 Voice Chatbot</h1>
+
             <button
                 onClick={handleVoice}
                 style={{
@@ -104,6 +137,7 @@ export default function Home() {
                 type="text"
                 value={transcript}
                 readOnly
+                placeholder="Ce ai spus va apărea aici..."
                 style={{
                     width: '100%',
                     padding: '1rem',
@@ -116,20 +150,20 @@ export default function Home() {
 
             <p style={{ marginTop: '1rem', fontWeight: 'bold' }}>Status: {status}</p>
 
-            <button
-                onClick={handleSubmit}
-                style={{
-                    padding: '1rem 2rem',
-                    fontSize: '1.2rem',
-                    backgroundColor: '#007BFF',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    marginTop: '1rem',
-                }}
-            >
-                Submit Message
-            </button>
+            {replyText && (
+                <div
+                    style={{
+                        marginTop: '2rem',
+                        padding: '1rem',
+                        backgroundColor: '#000',
+                        borderRadius: '8px',
+                        fontSize: '1.1rem',
+                        color: '#fff',
+                    }}
+                >
+                    <strong>ChatGPT:</strong> {replyText}
+                </div>
+            )}
         </main>
     );
 }
